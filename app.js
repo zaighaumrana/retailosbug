@@ -60,15 +60,26 @@ function _clearSession() {
   try {
     const r = sessionStorage.getItem("retailos_route");
     const m = sessionStorage.getItem("retailos_module");
-    const s    = sessionStorage.getItem("retailos_session");
+    const s = sessionStorage.getItem("retailos_session");
     const sess = s ? JSON.parse(s) : null;
     const isAdmin = sess?.isAdmin === true;
-    const role    = sess?.employee?.role || "";
+    const role = sess?.employee?.role || "";
     const isBackOffice = isAdmin || role === "Business Owner" || role === "Manager";
-    if (r && !(isBackOffice && r === "pos")) state.route = r;
-    if (isBackOffice && !r) state.route = "admin";
-    if (m) state.adminModule = m;
-  } catch {}
+
+    if (r && !(isBackOffice && r === "pos")) {
+      state.route = r;
+    }
+    if (isBackOffice && (!r || r === "pos")) {
+      state.route = "admin";
+    }
+    if (m) {
+      state.adminModule = m;
+    } else if (isBackOffice) {
+      state.adminModule = "dashboard";
+    }
+  } catch (e) {
+    console.warn("Session restore failed", e);
+  }
 })();
 
 // ── Platform billing reporter ─────────────────────────────────────
@@ -774,26 +785,36 @@ function render() {
       </div>`;
     return;
   }
-  // Restore role from session on every render
+    // Restore role from session on every render
   if (SESSION.employee?.role) state.role = SESSION.employee.role;
   if (SESSION.isAdmin) state.role = "Business Owner";
+
   const active = document.activeElement;
   const focusInfo = active?.dataset?.filter ? { filter:active.dataset.filter, start:active.selectionStart, end:active.selectionEnd } : null;
   const app    = document.getElementById("app");
   const tenant = currentTenant();
 
-  // Cashiers can only see POS
+  // Cashiers / restricted roles
   if (state.role === "Cashier" || state.role === "Inventory Staff") {
     if (state.route !== "pos") state.route = "pos";
   }
-  // Role-based route enforcement
   if (state.role === "Technician") {
     state.route = "workshop";
-  } else if (state.role === "Cashier" || state.role === "Inventory Staff") {
-    state.route = "pos";
-  } else if (state.role === "Business Owner" || state.role === "Manager" || SESSION.isAdmin) {
-    if (!["pos","admin","workshop"].includes(state.route)) state.route = "admin";
+  } 
+  // Back office / Admin
+  else if (state.role === "Business Owner" || state.role === "Manager" || SESSION.isAdmin) {
+    if (!["pos","admin","workshop"].includes(state.route)) {
+      state.route = "admin";
+    }
+    // Force dashboard if module invalid
+    if (state.route === "admin") {
+      if (!state.adminModule || !can(state.adminModule)) {
+        state.adminModule = "dashboard";
+      }
+    }
   }
+
+  // Global safety
   if (!can(state.adminModule)) state.adminModule = "dashboard";
 
   app.innerHTML = `
@@ -848,6 +869,11 @@ function render() {
 }
 
 function pageContent() {
+  if (state.route === "admin") {
+    if (!state.adminModule || !can(state.adminModule)) {
+      state.adminModule = "dashboard";
+    }
+  }
   if (state.route === "pos")      return pos();
   if (state.route === "workshop") return technicianView();
   const pages = {
@@ -3144,17 +3170,23 @@ document.addEventListener("input", event => {
 /* ── Change ──────────────────────────────────────────────────────── */
 document.addEventListener("change", async event => {
   const t = event.target;
+  if (!t) return;
 
+  if (t.dataset.action === "admin-module") {
+    state.adminModule = t.value; 
+    state.filter = ""; 
+    render(); 
+    return;
+  }
   if (t.dataset.action === "role") {
     state.role = t.value;
     state.adminModule = can(state.adminModule) ? state.adminModule : "dashboard";
     render(); return;
   }
-  if (t.dataset.action === "admin-module") {
-    state.adminModule = t.value; state.filter = ""; render(); return;
-  }
   if (t.dataset.action === "payment") {
-    state.checkoutPayment = t.value; state.cashTendered = 0; render(); return;
+    state.checkoutPayment = t.value; 
+    state.cashTendered = 0; 
+    render(); return;
   }
   if (t.dataset.udhar === "name")  { state.udharName  = t.value; return; }
   if (t.dataset.udhar === "phone") { state.udharPhone = t.value; return; }
