@@ -744,7 +744,7 @@ function render() {
     if (wrap && window.turnstile && !wrap.dataset.mounted) {
       wrap.dataset.mounted = "1";
       window.turnstile.render(wrap, {
-        sitekey: "0x4AAAAAADl87EDGnxcg5eJZ",
+        sitekey: "0x4AAAAAADpSVgyGVwxG0uDf",
         theme:   state.theme === "dark" ? "dark" : "light",
         callback: () => { /* token valid — enable login button */ 
           const btn = document.getElementById("login-btn");
